@@ -59,6 +59,9 @@ def parse_args():
     add_arg(
         '-P', '--pass',  help='Server password', dest='passwd',
         metavar='PASS',  type=str, default=None)
+    add_arg(
+        '-r', '--remote',     help='Deletes via an info command to cluster; requires sys-admin role',
+        action='store_true', default=False)
 
     add_arg('namespace', type=str, help="Namespace to delete from")
     add_arg('set',       type=str, help="Set to delete")
@@ -107,7 +110,7 @@ class spike_client(object):
             print_tb(traceback)
             sys.exit(1)
 
-    def delete_set(self, namespace, del_set):
+    def scan_delete(self, namespace, del_set):
         """
         Delete set from namespace and return the total number of records deleted.
         """
@@ -122,10 +125,31 @@ class spike_client(object):
         scan.foreach(delete, options={'concurrent':True, 'nobins':True})
         return deleted
 
+    def info_delete(self, namespace, del_set):
+        """
+        Using an info command, delete set from namespace.
+        """
+        # Grab a list of nodes, then build the command to run against them
+        # (Requires sys-admin role)
+        nodes = self._client.get_nodes()
+        cmd   = 'set-config:context=namespace;id={ns};set={set};set-delete=true;'
+        cmd   = cmd.format(ns=namespace, set=del_set)
+
+        responses = []
+        for node in nodes:
+            responses.append(self._client.info_node(cmd, node))
+        
+        pprint(responses)
+        return '??'
+
 def main():
     g_args = parse_args()
     with spike_client(g_args) as client:
-        deleted = client.delete_set(g_args.namespace, g_args.set)
+        delete = 0
+        if not g_args.remote:
+            deleted = client.scan_delete(g_args.namespace, g_args.set)
+        else:
+            deleted = client.info_delete(g_args.namespace, g_args.set)
         print('Delete complete! {} total records removed.'.format(deleted))
     return 0
 
