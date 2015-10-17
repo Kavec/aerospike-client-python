@@ -60,8 +60,8 @@ def parse_args():
         '-P', '--pass',  help='Server password', dest='passwd',
         metavar='PASS',  type=str, default=None)
     add_arg(
-        '-r', '--remote',     help='Deletes via an info command to cluster; requires sys-admin role',
-        action='store_true', default=False)
+        '-R', '--remote', action='store_true', default=False,
+        help='Deletes via an info command to cluster; requires sys-admin role if security is enabled')
 
     add_arg('namespace', type=str, help="Namespace to delete from")
     add_arg('set',       type=str, help="Set to delete")
@@ -123,34 +123,41 @@ class spike_client(object):
             if deleted % 25000 == 0:
                 print('Deleted {} records.'.format(deleted))
         scan.foreach(delete, options={'concurrent':True, 'nobins':True})
-        return deleted
+        return 'Delete complete! {} total records removed.'.format(deleted)
 
     def info_delete(self, namespace, del_set):
         """
         Using an info command, delete set from namespace.
-        """
-        # Grab a list of nodes, then build the command to run against them
-        # (Requires sys-admin role)
-        nodes = self._client.get_nodes()
-        cmd   = 'set-config:context=namespace;id={ns};set={set};set-delete=true;'
-        cmd   = cmd.format(ns=namespace, set=del_set)
 
-        responses = []
-        for node in nodes:
-            responses.append(self._client.info_node(cmd, node))
+        (Requires sys-admin role when security is enabled)
+        """
+        cmd    = 'set-config:context=namespace;id={ns};set={set};set-delete=true;'
+        cmd    = cmd.format(ns=namespace, set=del_set)
+        result = self._client.info(cmd)
+
+        node_err = []
+        for node, resp in result:
+            if resp[1] != 'ok\n':
+                node_err.append((node, resp[0], resp[1]))
         
-        pprint(responses)
-        return '??'
+        if node_err:
+            print('Encountered errors:')
+            for (node, r1, r2) in node_err:
+                print('{}:\n  {}\n  {}\n'.format(node, r1, r2))
+            # Return last line as status
+            return 'WARN: Some deletes may have been scheduled.'
+        return 'Delete for set {} scheduled! Delete will be processed on next nsup.'
+
 
 def main():
     g_args = parse_args()
     with spike_client(g_args) as client:
-        delete = 0
+        status = ""
         if not g_args.remote:
-            deleted = client.scan_delete(g_args.namespace, g_args.set)
+            status = client.scan_delete(g_args.namespace, g_args.set)
         else:
-            deleted = client.info_delete(g_args.namespace, g_args.set)
-        print('Delete complete! {} total records removed.'.format(deleted))
+            status = client.info_delete(g_args.namespace, g_args.set)
+        print(status)   
     return 0
 
 if __name__ == '__main__':
