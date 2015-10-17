@@ -136,17 +136,18 @@ class spike_client(object):
         result = self._client.info(cmd)
 
         node_err = []
-        for node, resp in result:
+        for node, resp in result.viewitems():
             if resp[1] != 'ok\n':
                 node_err.append((node, resp[0], resp[1]))
         
         if node_err:
-            print('Encountered errors:')
+            print('Encountered errors deleting {}.{}:'.format(namespace, del_set))
             for (node, r1, r2) in node_err:
-                print('{}:\n  {}\n  {}\n'.format(node, r1, r2))
+                print('{}:\n  {}\n  {}'.format(node, r1, r2))
             # Return last line as status
             return 'WARN: Some deletes may have been scheduled.'
-        return 'Delete for set {} scheduled! Delete will be processed on next nsup.'
+        return 'Delete for {}.{} scheduled! Delete will be processed on next nsup.'\
+            .format(namespace, del_set)
 
 
 def main():
